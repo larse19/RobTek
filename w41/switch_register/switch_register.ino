@@ -1,9 +1,17 @@
 #include <LinkedList.h>
+#include <EEPROM.h>
 
 #define latchPin 4
 #define dataPin 7
 #define clockPin 5
-//#define clearPin 6
+
+#define forwardLED B00000010
+#define reverseLED B00001000
+#define leftLED B00100000
+#define rightLED B10000000
+#define inputLED B00000100
+#define activeLED B00010000
+#define pauseLED B01000000
 
 const byte interruptPinA = 3;
 const byte interruptPinB = 2;
@@ -21,6 +29,14 @@ const byte interruptPinB = 2;
 
 volatile int numA = 0;
 volatile int numB = 0;
+volatile int speedA = 150;
+volatile int speedB = 150;
+int interval = 1000/20; // Interval between each tick of the tachometer (1000 millis / 20 slits)
+volatile int oldMilisA = 0;
+volatile int oldMilisB = 0;
+
+int listAddr = 10;
+int listSizeAddr = 9;
 
 bool readFromMulti(int chnl){
   int a = bitRead(chnl,0); //Take first bit from binary value of i channel.
@@ -76,6 +92,9 @@ void setup() {
   pinMode(A, OUTPUT);
   pinMode(B, OUTPUT);
   pinMode(C, OUTPUT);
+  pinMode(latchPin, OUTPUT);
+  pinMode(dataPin, OUTPUT);
+  pinMode(clockPin, OUTPUT);
   
   forwardButton.begin();
   reverseButton.begin();
@@ -96,26 +115,42 @@ void setup() {
 void loop() {
   // Input state
   if(state == "input"){
+    writeToRegister(inputLED);
     if(forwardButton.isReleased()){
       commands.add(0);
       Serial.println("forward pressed");
+      writeToRegister(forwardLED | inputLED);
     }
     if(reverseButton.isReleased()){
       commands.add(1);
       Serial.println("reverse pressed");
+      writeToRegister(reverseLED | inputLED);
     }
     if(leftButton.isReleased()){
       commands.add(2);
       Serial.println("left pressed");
+      writeToRegister(leftLED | inputLED);
     }
     if(rightButton.isReleased()){
       commands.add(3);
       Serial.println("right pressed");
+      writeToRegister(rightLED | inputLED);
     }
     
     if(playButton.isReleased()){
-      state = "active";
-      Serial.println("play pressed");
+      if(commands.size() == 0){
+        // If no command is imputted, run the last command from EEPROM
+        int commandArr[EEPROM.read(listSizeAddr)];
+        readIntArrayFromEEPROM(listAddr, commandArr, sizeof(commandArr));
+        addArrayToCommands(commandArr);
+        Serial.println("reading from EEPROM");
+      }else{
+        // If a command is inputted, write it to EEPROM
+        writeIntArrayIntoEEPROM(listAddr, commandsToArray(), listSizeAddr);
+        Serial.println("writing to EEPROM");
+      }
+        state = "active";
+        Serial.println("play pressed");
     }
 
 
@@ -127,13 +162,13 @@ void loop() {
       state = "input";
       commandIndex = 0;
       Serial.println("input mode:");
-      Serial.println(commands.size());
     }
 
-   
+
   // Pause state
   }else if(state == "pause"){
     Serial.println("paused");
+    writeToRegister(pauseLED);
     if(playButton.isReleased()){
        state = "active";
       }
@@ -149,15 +184,19 @@ void loop() {
 void doCommand(int command){
   switch(command){
       case 0:
+        writeToRegister(forwardLED | activeLED);
         forward();
         break;
        case 1:
+        writeToRegister(reverseLED | activeLED);
         reverse();
         break;
        case 2:
+        writeToRegister(leftLED | activeLED);
         left();
         break;
        case 3:
+        writeToRegister(rightLED | activeLED);
         right();
         break;
     }
@@ -165,16 +204,17 @@ void doCommand(int command){
 
 // General drive function with pause/stop listener
 void drive(int ticksA, boolean directionA, int ticksB, boolean directionB){
-  while(numA <= ticksA || numB <= ticksB){
+  numA = 0;
+  numB = 0;
+  while(numA < ticksA || numB < ticksB){
     if(numA < ticksA){
-      analogWrite(spA, 120);
+      analogWrite(spA, speedA);
       digitalWrite(dirA, directionA);
-      
     }else{
       analogWrite(spA, 0);
     }
     if(numB < ticksB){
-      analogWrite(spB, 120);
+      analogWrite(spB, speedB);
       digitalWrite(dirB, directionB);
       
     }else{
@@ -192,18 +232,35 @@ void drive(int ticksA, boolean directionA, int ticksB, boolean directionB){
   }
   analogWrite(spA, 0);
   analogWrite(spB, 0);
-  numA = 0;
-  numB = 0;
 }
 
 // Incrementers for tachometer
 void incrementA(){
   numA += 1;
+  if(millis() - oldMilisA > interval){
+    if(speedA < 250){
+      speedA += 5;
+    }
+  }else if(millis() - oldMilisA < interval){
+    if(speedA > 100){
+      speedA -= 5;
+    }
+  }
+  oldMilisA = millis();
 }
 
 void incrementB(){
   numB += 1;
-
+  if(millis() - oldMilisB > interval - 20){
+    if(speedB < 250){
+      speedB += 5;
+    }
+  }else if(millis() - oldMilisB < interval + 20){
+    if(speedB > 100){
+      speedB -= 5;
+    }
+  }
+  oldMilisB = millis();
 }
 
 // Directional drive functions
@@ -215,13 +272,13 @@ void forward(){
 
 void left(){
   Serial.println("left");
-  drive(40, HIGH, 0, HIGH);
+  drive(15, HIGH, 0, HIGH);
   Serial.println("done");
 }
 
 void right(){
   Serial.println("right");
-  drive(0, HIGH, 40, HIGH);
+  drive(0, HIGH, 15, HIGH);
   Serial.println("done");
 }
 
@@ -232,13 +289,40 @@ void reverse(){
 }
 
 // Write a byte to shift register
-void writeToRegister(byte data) {
-  digitalWrite(latchPin, LOW);
-  //digitalWrite(clearPin, HIGH);
-  digitalWrite(latchPin, HIGH);
-  //digitalWrite(clearPin, LOW);
-  
+void writeToRegister(byte data) {  
   digitalWrite(latchPin, LOW);
   shiftOut(dataPin, clockPin, MSBFIRST, data);
   digitalWrite(latchPin, HIGH);
+}
+
+void writeIntArrayIntoEEPROM(int address, int numbers[], int arraySizeAddr)
+{
+  arraySize = sizeof(numbers);
+  EEPROM.write(arraySizeAddr, arraySize)
+  for (int i = 0; i < arraySize; i++) 
+  {
+    EEPROM.write(address + i, numbers[i]);
+  }
+}
+
+void readIntArrayFromEEPROM(int address, int numbers[], int arraySize)
+{
+  for (int i = 0; i < arraySize; i++)
+  {
+    numbers[i] = (EEPROM.read(address + i));
+  }
+}
+
+void addArrayToCommands(int arr[]){
+  for(int i = 0; i < sizeof(arr); i++){
+    commands.add(arr[i]);
+  }
+}
+
+int * commandsToArray(){
+  int arr[commands.size()];
+  for(int i = 0; i < commands.size(); i++){
+    arr[i] = commands.get(i);
+  }
+  return arr;
 }
