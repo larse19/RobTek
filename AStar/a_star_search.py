@@ -113,11 +113,13 @@ Successor function, mapping the nodes to its successors
 def successor_fn(state):  # Lookup list of successor states
     return STATE_SPACE[state]  # successor_fn( 'C' ) returns ['F', 'G']
 
-def distance_manhatten():
+def distance_manhatten(newGoalState, newInitialState):
     global stateA, stateB, stateC, stateD, stateE, stateF, stateG, stateH, stateI, stateJ, stateK, stateL, stateM, stateN, stateO, stateP, stateQ, stateR, stateS
+    goalSt = [y[0] for y in STATES].index(newGoalState)
+    initialSt = [y[0] for y in STATES].index(newInitialState)
     for i in range(len(STATE_POSITION)):
         p1 = STATE_POSITION[i]
-        p2 = STATE_POSITION[2]
+        p2 = STATE_POSITION[goalSt]
 
         #print(p1[0], p2, i)
 
@@ -150,8 +152,8 @@ def distance_manhatten():
     stateQ = STATES[16]
     stateR = STATES[17] 
     stateS = STATES[18]
-    setInitialState(stateK)
-    setGoalState(stateC)
+    setInitialState(STATES[initialSt])
+    setGoalState(STATES[goalSt])
     setStateSpace()
 
 def setInitialState(state):
@@ -160,7 +162,7 @@ def setInitialState(state):
 
 def setGoalState(state):
     global GOAL_STATE
-    GOAL_STATE = state
+    GOAL_STATE = [state]
 
 def setStateSpace():
     global STATE_SPACE
@@ -238,9 +240,9 @@ stateQ = ()
 stateR = ()
 stateS = ()
 
-INITIAL_STATE = ('K', 4)
-GOAL_STATE = [('C', 0)]
-STATE_SPACE = {('A', 2): [('B', 1), ('I', 6)], ('B', 1): [('A', 2), ('C', 0), ('F', 3)], ('C', 0): [('B', 1), ('D', 1)], ('D', 1): [('C', 0), ('E', 2)], ('E', 2): [('D', 1), ('L', 5)], ('F', 3): [('B', 1), ('G', 2)], ('G', 2): [('F', 3)], ('H', 3): [('K', 4)], ('I', 6): [('A', 2), ('J', 5), ('O', 8)], ('J', 5): [('I', 6), ('K', 4), ('M', 6)], ('K', 4): [('J', 5), ('H', 3), ('L', 5)], ('L', 5): [('E', 2), ('K', 4), ('N', 6)], ('M', 6): [('J', 5), ('N', 6), ('P', 7)], ('N', 6): [('M', 6), ('L', 5), ('S', 8)], ('O', 8): [('I', 6), ('P', 7), ('Q', 9)], ('P', 7): [('O', 8), ('M', 6)], ('Q', 9): [('O', 8), ('R', 8)], ('R', 8): [('Q', 9), ('S', 8)], ('S', 8): [('R', 8), ('N', 6)]}
+INITIAL_STATE = ()
+GOAL_STATE = []
+STATE_SPACE = {}
 
 '''
 Path cost from child to parent node
@@ -316,15 +318,15 @@ PATH_COST = { ("B", "A"): 1,
 Run tree search and display the nodes in the path to goal node
 '''
 def run():
-    # distance_manhatten()
-    # print(INITIAL_STATE)
-    # print(GOAL_STATE)
-    # print(STATE_SPACE)
+    distance_manhatten("C", "K")
+    print(INITIAL_STATE)
+    #print(GOAL_STATE)
+    #print(STATE_SPACE)
 
     path = a_star_search()
     print('Solution path:')
     for node in path:
-       node.display()
+        node.display()
 
 if __name__ == '__main__':
     run()
